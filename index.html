@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoIP.ms SMS Dashboard</title>
+    
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.1/font/bootstrap-icons.min.css">
+    
+    <style>
+        body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+        .card { background-color: #161b22; border: 1px solid #30363d; }
+        .form-control, .form-control:focus { background-color: #0d1117; border-color: #30363d; color: #c9d1d9; }
+        .btn-primary { background-color: #238636; border-color: #238636; }
+        .btn-primary:hover { background-color: #2ea043; border-color: #2ea043; }
+        .log-console { font-family: 'Consolas', monospace; font-size: 0.85rem; height: 150px; overflow-y: auto; background-color: #000; border-radius: 6px; padding: 10px; border: 1px solid #30363d; }
+        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 2px; }
+        .text-dim { color: #8b949e; }
+    </style>
+</head>
+<body class="d-flex flex-column min-vh-100">
+
+    <nav class="navbar navbar-expand-lg border-bottom border-secondary" style="background-color: #161b22;">
+        <div class="container">
+            <a class="navbar-brand fw-bold text-white" href="#"><i class="bi bi-broadcast me-2"></i>SMS Bridge</a>
+            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#settingsModal">
+                <i class="bi bi-gear-fill me-1"></i> Config
+            </button>
+        </div>
+    </nav>
+
+    <div class="container py-5" style="max-width: 700px;">
+        
+        <div id="connection-alert" class="alert alert-warning d-none mb-4">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i> 
+            <strong>Not Configured:</strong> Please click "Config" to set your VPS URL and Secret.
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-4">
+                <h5 class="card-title mb-4"><i class="bi bi-envelope-plus me-2"></i>Compose Message</h5>
+                
+                <div class="mb-3">
+                    <label class="form-label small text-uppercase fw-bold text-dim">Recipients</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-dark border-secondary text-secondary"><i class="bi bi-people"></i></span>
+                        <input type="text" id="input-recipients" class="form-control" placeholder="Leave empty to use Defaults">
+                    </div>
+                    <div class="form-text text-dim">Comma separated for multiple contacts.</div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small text-uppercase fw-bold text-dim">Message</label>
+                    <textarea id="input-message" class="form-control" rows="4" placeholder="Type your SMS message here..."></textarea>
+                    <div class="d-flex justify-content-end mt-1">
+                        <span id="char-count" class="badge bg-secondary">0 chars</span>
+                    </div>
+                </div>
+
+                <button id="btn-send" class="btn btn-primary w-100 py-2 fw-bold" onclick="sendMessage()">
+                    <i class="bi bi-send-fill me-2"></i> Send Message
+                </button>
+            </div>
+        </div>
+
+        <div class="mb-2 d-flex justify-content-between align-items-center">
+            <label class="small text-uppercase fw-bold text-dim">Transmission Log</label>
+            <button class="btn btn-link btn-sm text-decoration-none text-dim p-0" onclick="clearLog()">Clear</button>
+        </div>
+        <div id="log-console" class="log-console">
+            <div class="text-dim">> System Ready. Waiting for input...</div>
+        </div>
+
+    </div>
+
+    <div class="modal fade" id="settingsModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content" style="background-color: #161b22; border: 1px solid #30363d;">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title">Connection Settings</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="small text-dim">These details are saved in your browser's Local Storage.</p>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Bridge URL</label>
+                        <input type="url" id="cfg-url" class="form-control" placeholder="https://sms.yourdomain.com/webhook">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Webhook Secret (X-Secret)</label>
+                        <input type="password" id="cfg-secret" class="form-control" placeholder="your-super-secret-key">
+                    </div>
+
+                    <hr class="border-secondary">
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Default Recipients (Client-Side)</label>
+                        <input type="text" id="cfg-defaults" class="form-control" placeholder="1234567890, 9876543210">
+                        <div class="form-text text-dim small">Used automatically if the Recipients field is left empty.</div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" onclick="saveSettings()">Save Configuration</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
