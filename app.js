@@ -1,161 +1,168 @@
-// --- Constants & State ---
-const STORAGE_KEY_URL = "voipms_bridge_url";
-const STORAGE_KEY_SECRET = "voipms_bridge_secret";
-const STORAGE_KEY_DEFAULTS = "voipms_bridge_defaults"; // New key
+// web-client/app.js
 
-// --- Initialization ---
+// --- CONFIGURATION ---
+// The GitHub Action 'web-deploy.yml' will replace this string with your secret.
+// If running locally, you can temporarily change this to your VPS URL for testing.
+const BRIDGE_BASE_URL = "__BRIDGE_URL_PLACEHOLDER__"; 
+
 document.addEventListener("DOMContentLoaded", () => {
-    loadSettings();
-    updateStatus();
-
-    // Character Counter
+    checkSession();
+    
+    // Character counter
     document.getElementById("input-message").addEventListener("input", (e) => {
         document.getElementById("char-count").innerText = `${e.target.value.length} chars`;
     });
+    
+    // Enter key to unlock
+    document.getElementById("input-passphrase").addEventListener("keypress", (e) => {
+        if(e.key === "Enter") doUnlock();
+    });
 });
 
-// --- Settings Management ---
-function loadSettings() {
-    const url = localStorage.getItem(STORAGE_KEY_URL) || "";
-    const secret = localStorage.getItem(STORAGE_KEY_SECRET) || "";
-    const defaults = localStorage.getItem(STORAGE_KEY_DEFAULTS) || "";
+async function doUnlock() {
+    const phrase = document.getElementById("input-passphrase").value.trim();
+    const errDiv = document.getElementById("login-error");
     
-    document.getElementById("cfg-url").value = url;
-    document.getElementById("cfg-secret").value = secret;
-    document.getElementById("cfg-defaults").value = defaults;
-}
-
-function saveSettings() {
-    const url = document.getElementById("cfg-url").value.trim();
-    const secret = document.getElementById("cfg-secret").value.trim();
-    const defaults = document.getElementById("cfg-defaults").value.trim();
-
-    if (!url || !secret) {
-        alert("Bridge URL and Secret are required.");
-        return;
-    }
-
-    localStorage.setItem(STORAGE_KEY_URL, url);
-    localStorage.setItem(STORAGE_KEY_SECRET, secret);
-    localStorage.setItem(STORAGE_KEY_DEFAULTS, defaults);
-
-    // Close Modal
-    const modalEl = document.getElementById('settingsModal');
-    const modal = bootstrap.Modal.getInstance(modalEl);
-    modal.hide();
-
-    updateStatus();
-    log("Configuration saved successfully.", "text-success");
-}
-
-function updateStatus() {
-    const url = localStorage.getItem(STORAGE_KEY_URL);
-    const alertBox = document.getElementById("connection-alert");
+    if(!phrase) return;
+    errDiv.innerText = "Verifying...";
     
-    if (!url) {
-        alertBox.classList.remove("d-none");
-    } else {
-        alertBox.classList.add("d-none");
-    }
-}
-
-// --- Sending Logic ---
-async function sendMessage() {
-    const url = localStorage.getItem(STORAGE_KEY_URL);
-    const secret = localStorage.getItem(STORAGE_KEY_SECRET);
-    
-    // Get Inputs
-    const recipientsRaw = document.getElementById("input-recipients").value.trim();
-    const message = document.getElementById("input-message").value;
-    const btn = document.getElementById("btn-send");
-
-    // Validation 1: Config
-    if (!url || !secret) {
-        new bootstrap.Modal(document.getElementById('settingsModal')).show();
-        return;
-    }
-
-    // Validation 2: Message Content
-    if (!message) {
-        log("Error: Message field is required.", "text-danger");
-        return;
-    }
-
-    // Validation 3: Resolve Recipients
-    let finalRecipients = [];
-    
-    if (recipientsRaw.length > 0) {
-        // Use user input
-        finalRecipients = recipientsRaw.split(",").map(s => s.trim()).filter(s => s.length > 0);
-    } else {
-        // Attempt to use defaults
-        const defaultsRaw = localStorage.getItem(STORAGE_KEY_DEFAULTS) || "";
-        if (defaultsRaw.length > 0) {
-            finalRecipients = defaultsRaw.split(",").map(s => s.trim()).filter(s => s.length > 0);
-            log("ℹ️ Input empty. Using configured default recipients.", "text-info");
+    try {
+        // 1. Hit the Bridge to validate Passphrase
+        const res = await fetch(`${BRIDGE_BASE_URL}/bootstrap`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ passphrase: phrase })
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) throw new Error(data.error || "Unlock failed");
+        
+        // 2. SUCCESS: The server returns the Secret and the Recipients
+        localStorage.setItem("bridge_secret", data.webhook_secret);
+        localStorage.setItem("bridge_name", data.display_name);
+        localStorage.setItem("bridge_recipients", JSON.stringify(data.recipients));
+        
+        checkSession();
+        
+        errDiv.innerText = "";
+        document.getElementById("input-passphrase").value = "";
+        
+    } catch (e) {
+        console.error(e);
+        errDiv.innerText = "❌ " + e.message;
+        if(e.message.includes("Failed to fetch")) {
+            errDiv.innerText += " (Check Bridge URL/CORS)";
         }
+        document.getElementById("input-passphrase").value = "";
+    }
+}
+
+function checkSession() {
+    const secret = localStorage.getItem("bridge_secret");
+    
+    // Toggle Views based on if we have a secret (logged in)
+    if (secret) {
+        document.getElementById("view-login").classList.add("hidden");
+        document.getElementById("view-app").classList.remove("hidden");
+        
+        // Update Header Name
+        document.getElementById("display-name").innerText = localStorage.getItem("bridge_name");
+        
+        // Update "Active Group" Chips (Read Only)
+        const defs = JSON.parse(localStorage.getItem("bridge_recipients") || "[]");
+        const chipContainer = document.getElementById("active-group-list");
+        
+        if(chipContainer) {
+            chipContainer.innerHTML = ""; 
+            if(defs.length > 0) {
+                defs.forEach(num => {
+                    const badge = document.createElement("span");
+                    badge.className = "badge bg-secondary me-1";
+                    badge.innerText = num;
+                    chipContainer.appendChild(badge);
+                });
+                document.getElementById("group-container").classList.remove("hidden");
+            } else {
+                document.getElementById("group-container").classList.add("hidden");
+            }
+        }
+        
+    } else {
+        document.getElementById("view-app").classList.add("hidden");
+        document.getElementById("view-login").classList.remove("hidden");
+    }
+}
+
+function doLogout() {
+    localStorage.clear();
+    location.reload();
+}
+
+async function sendMessage() {
+    const secret = localStorage.getItem("bridge_secret");
+    const msg = document.getElementById("input-message").value.trim();
+    
+    // Get "Additional Recipients" input
+    const additionalInput = document.getElementById("input-additional");
+    const additionalVal = additionalInput ? additionalInput.value.trim() : "";
+    
+    if (!msg) return alert("Message is empty");
+
+    // --- RECIPIENT LOGIC ---
+    // 1. Get Service Defaults
+    const serviceRecipients = JSON.parse(localStorage.getItem("bridge_recipients") || "[]");
+    
+    // 2. Get User Additions
+    let additionalRecipients = [];
+    if (additionalVal) {
+        additionalRecipients = additionalVal.split(",").map(s => s.trim()).filter(s => s !== "");
     }
 
-    if (finalRecipients.length === 0) {
-        log("Error: No recipients specified and no defaults configured.", "text-danger");
-        return;
+    // 3. Combine Unique Numbers
+    const combinedSet = new Set([...serviceRecipients, ...additionalRecipients]);
+    const finalTo = Array.from(combinedSet).join(",");
+
+    if (!finalTo) {
+        return alert("No recipients found (Service list is empty and no additional numbers added).");
     }
 
-    // Prepare Payload
-    const payload = {
-        contact: finalRecipients,
-        message: message
-    };
-
-    // UI Lock
+    const btn = document.getElementById("btn-send");
+    const originalText = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Sending...';
 
-    log(`Sending to [${finalRecipients.join(", ")}]...`, "text-info");
-
     try {
-        const response = await fetch(url, {
+        const res = await fetch(`${BRIDGE_BASE_URL}/webhook`, {
             method: "POST",
-            headers: {
+            headers: { 
                 "Content-Type": "application/json",
-                "X-Secret": secret
+                "X-Secret": secret 
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ message: msg, to: finalTo })
         });
-
-        if (response.ok) {
-            log("✅ Success! Message queued for delivery.", "text-success");
-            document.getElementById("input-message").value = ""; // Clear message only
-            // We keep recipients cleared if they were empty, or keep them if typed
-        } else {
-            const errText = await response.text();
-            log(`❌ Server Error (${response.status}): ${errText}`, "text-danger");
-        }
-
-    } catch (error) {
-        log(`❌ Network Error: ${error.message}`, "text-danger");
         
-        if (url.startsWith("http:") && window.location.protocol === "https:") {
-            log("⚠️ MIXED CONTENT ERROR: You are accessing this site via HTTPS, but your Bridge is HTTP.", "text-warning");
+        if(res.ok) {
+            document.getElementById("input-message").value = "";
+            log(`Sent to ${combinedSet.size} recipients ✅`, "text-success");
+        } else {
+            const txt = await res.text();
+            log("Error: " + txt, "text-danger");
         }
+    } catch (e) {
+        log("Network Error: " + e.message, "text-danger");
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-send-fill me-2"></i> Send Message';
+        btn.innerHTML = originalText;
     }
 }
 
-// --- Logging ---
-function log(msg, colorClass = "text-light") {
+function log(msg, colorClass="text-secondary") {
     const consoleDiv = document.getElementById("log-console");
+    if(!consoleDiv) return;
     const ts = new Date().toLocaleTimeString();
-    
     const div = document.createElement("div");
-    div.className = `log-entry ${colorClass}`;
-    div.innerHTML = `<span class="text-dim me-2">[${ts}]</span> ${msg}`;
-    
+    div.className = colorClass;
+    div.innerText = `[${ts}] ${msg}`;
     consoleDiv.prepend(div);
-}
-
-function clearLog() {
-    document.getElementById("log-console").innerHTML = "";
 }

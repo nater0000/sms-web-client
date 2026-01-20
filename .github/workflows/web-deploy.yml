@@ -1,0 +1,51 @@
+name: Deploy Web Client
+
+on:
+  # Trigger when files in the web-client folder change
+  push:
+    branches: ["main"]
+    paths:
+      - "web-client/**"
+  # Allow manual trigger from Actions tab
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 1. Inject the Bridge URL Secret into app.js
+      # We use 'sed' to replace the placeholder string with the actual Secret
+      - name: Inject Bridge URL
+        working-directory: web-client
+        run: |
+          sed -i 's|__BRIDGE_URL_PLACEHOLDER__|${{ secrets.BRIDGE_URL }}|g' app.js
+
+      # 2. Setup Pages
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      # 3. Upload the 'web-client' folder as the site artifact
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'web-client'
+
+      # 4. Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
