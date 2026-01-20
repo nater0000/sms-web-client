@@ -31,7 +31,6 @@ jobs:
       # 1. Inject the Bridge URL Secret into app.js
       # We use 'sed' to replace the placeholder string with the actual Secret
       - name: Inject Bridge URL
-        working-directory: web-client
         run: |
           sed -i 's|__BRIDGE_URL_PLACEHOLDER__|${{ secrets.BRIDGE_URL }}|g' app.js
 
@@ -43,7 +42,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'web-client'
+          path: '.'
 
       # 4. Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
