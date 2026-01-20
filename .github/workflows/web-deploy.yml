@@ -1,12 +1,14 @@
 name: Deploy Web Client
 
 on:
-  # Trigger when files in the web-client folder change
+  # Trigger when the specific web files change in the ROOT
   push:
     branches: ["main"]
     paths:
-      - "web-client/**"
-  # Allow manual trigger from Actions tab
+      - "index.html"
+      - "app.js"
+      - ".github/workflows/web-deploy.yml" # Good practice to include the workflow itself
+  # Allow manual trigger
   workflow_dispatch:
 
 permissions:
@@ -28,23 +30,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1. Inject the Bridge URL Secret into app.js
-      # We use 'sed' to replace the placeholder string with the actual Secret
+      # 1. Inject the Bridge URL Secret
       - name: Inject Bridge URL
         run: |
           sed -i 's|__BRIDGE_URL_PLACEHOLDER__|${{ secrets.BRIDGE_URL }}|g' app.js
 
-      # 2. Setup Pages
+      # 2. Stage Web Files (Security Best Practice)
+      # Move only web files to a clean folder so we don't publish the backend code
+      - name: Stage Web Files
+        run: |
+          mkdir _site
+          cp index.html _site/
+          cp app.js _site/
+
+      # 3. Setup Pages
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      # 3. Upload the 'web-client' folder as the site artifact
+      # 4. Upload ONLY the staged folder
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '_site'
 
-      # 4. Deploy to GitHub Pages
+      # 5. Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        
