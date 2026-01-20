@@ -123,8 +123,10 @@ async function sendMessage() {
     const combinedSet = new Set([...serviceRecipients, ...additionalRecipients]);
     const finalTo = Array.from(combinedSet).join(",");
 
+    // --- NEW VALIDATION: Ensure at least one recipient exists ---
     if (!finalTo) {
-        return alert("No recipients found (Service list is empty and no additional numbers added).");
+        log("❌ Error: No recipients! (Service list is empty & no additional numbers added)", "text-danger");
+        return; 
     }
 
     const btn = document.getElementById("btn-send");
