@@ -31,7 +31,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // 3. Auto-Save Manual Recipients
-    // We restore it on load (in checkSession) and save on input
     recInput.addEventListener("input", (e) => {
         localStorage.setItem(KEY_MANUAL_DRAFT, e.target.value);
     });
@@ -81,8 +80,7 @@ async function doUnlock() {
         localStorage.setItem(KEY_NAME, data.display_name);
         localStorage.setItem(KEY_DEFAULTS, JSON.stringify(data.recipients));
         
-        // Clear previous manual drafts when switching services to avoid confusion
-        localStorage.removeItem(KEY_MANUAL_DRAFT);
+        localStorage.removeItem(KEY_MANUAL_DRAFT); // Clear old drafts
 
         checkSession();
         errDiv.innerText = "";
@@ -120,7 +118,6 @@ function checkSession() {
         
         document.getElementById("display-name").innerText = localStorage.getItem(KEY_NAME);
         
-        // Load Service Defaults (Read Only)
         const defs = JSON.parse(localStorage.getItem(KEY_DEFAULTS) || "[]");
         const chipContainer = document.getElementById("active-group-list");
         
@@ -137,7 +134,6 @@ function checkSession() {
             document.getElementById("group-container").classList.add("hidden");
         }
 
-        // Restore Manual Draft (Auto-Save)
         const savedDraft = localStorage.getItem(KEY_MANUAL_DRAFT);
         if(savedDraft) {
             document.getElementById("input-additional").value = savedDraft;
@@ -154,7 +150,6 @@ function doLogout() {
     localStorage.removeItem(KEY_SECRET);
     localStorage.removeItem(KEY_NAME);
     localStorage.removeItem(KEY_DEFAULTS);
-    // We keep history and manual draft for convenience
     location.reload();
 }
 
@@ -174,27 +169,50 @@ async function sendMessage() {
     
     if (!msg) return alert("Message is empty");
 
-    const serviceRecipients = JSON.parse(localStorage.getItem(KEY_DEFAULTS) || "[]");
-    
-    let additionalRecipients = [];
-    if (additionalVal) {
-        // Split by comma OR newline, trim, and filter
-        additionalRecipients = additionalVal.split(/[\n,]+/)
-            .map(s => s.trim())
-            .filter(s => s !== "");
-            
-        // Basic Phone Validation
-        const invalid = additionalRecipients.filter(n => !/^[\d\+\-\(\)\s]+$/.test(n));
-        if (invalid.length > 0) {
-            return alert(`Invalid phone number format: ${invalid.join(", ")}`);
+    // --- NORMALIZATION HELPER ---
+    // Returns clean number if valid (10 digits OR 11 digits starting with 1), else null.
+    const processNumber = (raw) => {
+        const n = raw.replace(/\D/g, ''); // Strip non-digits
+        if (n.length === 10 || (n.length === 11 && n.startsWith('1'))) {
+            return n;
         }
+        return null;
+    };
+
+    // 1. Process Service Defaults (Normalize & Filter)
+    const serviceRecipients = JSON.parse(localStorage.getItem(KEY_DEFAULTS) || "[]")
+        .map(n => processNumber(n))
+        .filter(n => n !== null);
+    
+    // 2. Process User Input (Normalize, Filter, & Warn)
+    let additionalRecipients = [];
+    let droppedNumbers = [];
+
+    if (additionalVal) {
+        const inputs = additionalVal.split(/[\n,]+/);
+        inputs.forEach(str => {
+            const s = str.trim();
+            if (s === "") return;
+            
+            const valid = processNumber(s);
+            if (valid) {
+                additionalRecipients.push(valid);
+            } else {
+                droppedNumbers.push(s);
+            }
+        });
     }
 
+    if (droppedNumbers.length > 0) {
+        log(`⚠️ Filtered out ${droppedNumbers.length} invalid numbers: ${droppedNumbers.join(", ")}`, "text-warning");
+    }
+
+    // 3. Combine & De-duplicate (Set handles uniqueness of normalized strings)
     const combinedSet = new Set([...serviceRecipients, ...additionalRecipients]);
     const finalTo = Array.from(combinedSet).join(",");
 
     if (!finalTo) {
-        return alert("Error: No recipients specified.\n\nSince you are in Manual Mode (or the Service list is empty), you must add numbers in the 'Recipients' box.");
+        return alert("Error: No valid recipients found.\n\nPlease check your numbers.");
     }
 
     const btn = document.getElementById("btn-send");
@@ -212,11 +230,20 @@ async function sendMessage() {
             body: JSON.stringify({ message: msg, to: finalTo })
         });
         
+        // --- AUTH HANDLING ---
+        if (res.status === 401 || res.status === 403) {
+            log("❌ Authentication Failed: Secret is invalid.", "text-danger");
+            if(confirm("Authentication failed (Wrong Secret). Lock and try again?")) {
+                doLogout();
+            }
+            return;
+        }
+
         if(res.ok) {
             document.getElementById("input-message").value = "";
             document.getElementById("char-count").innerText = "0 chars";
             
-            saveToHistory(msg); // Save success to history
+            saveToHistory(msg);
             
             log(`Sent to ${combinedSet.size} recipients ✅`, "text-success");
         } else {
@@ -234,13 +261,9 @@ async function sendMessage() {
 // --- HISTORY SYSTEM ---
 function saveToHistory(msg) {
     let history = JSON.parse(localStorage.getItem(KEY_HISTORY) || "[]");
-    // Remove if duplicate exists (move to top)
     history = history.filter(item => item !== msg);
-    // Add to top
     history.unshift(msg);
-    // Keep max 5
     if (history.length > 5) history.pop();
-    
     localStorage.setItem(KEY_HISTORY, JSON.stringify(history));
 }
 
@@ -259,12 +282,8 @@ function showHistory() {
             div.onclick = () => {
                 const box = document.getElementById("input-message");
                 box.value = msg;
-                // Trigger input event to update char count
                 box.dispatchEvent(new Event('input'));
-                
-                // Close modal (Bootstrap native)
-                const modalEl = document.getElementById('historyModal');
-                const modal = bootstrap.Modal.getInstance(modalEl);
+                const modal = bootstrap.Modal.getInstance(document.getElementById('historyModal'));
                 modal.hide();
             };
             list.appendChild(div);
